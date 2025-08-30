@@ -26,7 +26,7 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
 
     address public constant NATIVE_TOKEN = address(0);
     uint16 public constant MAX_FEE_BPS = 500; // 5% hard cap
-    uint16 public feeBps = 200;               // default 2%
+    uint16 public feeBps = 200; // default 2%
 
     enum EscrowState {
         Created,
@@ -40,10 +40,10 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
 
     struct Milestone {
         uint256 amount;
-        string title;     // keep short; UI can display richer off-chain text
-        uint32 dueDate;   // unix timestamp (optional in MVP)
+        string title; // keep short; UI can display richer off-chain text
+        uint32 dueDate; // unix timestamp (optional in MVP)
         bool approved;
-        bool released;    // credited to pending balances (set on approval)
+        bool released; // credited to pending balances (set on approval)
     }
 
     struct Escrow {
@@ -52,7 +52,7 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         address token; // address(0) = native AVAX
         uint256 totalDeposited;
         uint256 totalAllocated; // sum of milestone amounts
-        uint256 totalReleased;  // sum of amounts credited on approvals
+        uint256 totalReleased; // sum of amounts credited on approvals
         EscrowState state;
         Milestone[] milestones;
     }
@@ -80,7 +80,11 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         address token,
         uint256 totalAmount
     );
-    event EscrowFunded(uint256 indexed id, address indexed from, uint256 amount);
+    event EscrowFunded(
+        uint256 indexed id,
+        address indexed from,
+        uint256 amount
+    );
     event WorkStarted(uint256 indexed id);
     event MilestoneApproved(
         uint256 indexed id,
@@ -88,7 +92,11 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         uint256 amount,
         uint256 fee
     );
-    event Withdrawal(address indexed account, address indexed token, uint256 amount);
+    event Withdrawal(
+        address indexed account,
+        address indexed token,
+        uint256 amount
+    );
     event EscrowCompleted(uint256 indexed id);
     event CancelRequested(uint256 indexed id);
     event EscrowCanceled(uint256 indexed id, uint256 refundAmount);
@@ -100,14 +108,12 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     );
     event FeeUpdated(uint16 newFeeBps);
     event FeeTreasuryUpdated(address indexed newTreasury);
-    event Paused(address account);
-    event Unpaused(address account);
 
     // -----------------------------
     // Constructor
     // -----------------------------
 
-    constructor(address payable _feeTreasury) {
+    constructor(address payable _feeTreasury) Ownable(msg.sender) {
         require(_feeTreasury != address(0), "fee treasury required");
         feeTreasury = _feeTreasury;
     }
@@ -136,7 +142,9 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         return e.totalDeposited - e.totalReleased;
     }
 
-    function _allMilestonesReleased(Escrow storage e) internal view returns (bool) {
+    function _allMilestonesReleased(
+        Escrow storage e
+    ) internal view returns (bool) {
         for (uint256 i = 0; i < e.milestones.length; i++) {
             if (!e.milestones[i].released) return false;
         }
@@ -164,7 +172,10 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         require(freelancer != msg.sender, "client != freelancer");
         uint256 n = amounts.length;
         require(n > 0, "milestones required");
-        require(titles.length == n && dueDates.length == n, "array length mismatch");
+        require(
+            titles.length == n && dueDates.length == n,
+            "array length mismatch"
+        );
 
         id = nextEscrowId++;
         Escrow storage e = escrows[id];
@@ -193,7 +204,10 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @notice Client funds the escrow. Strict: cannot exceed totalAllocated.
-    function fundEscrow(uint256 id, uint256 amount)
+    function fundEscrow(
+        uint256 id,
+        uint256 amount
+    )
         external
         payable
         whenNotPaused
@@ -203,7 +217,10 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     {
         Escrow storage e = escrows[id];
         require(amount > 0, "zero amount");
-        require(e.totalDeposited + amount <= e.totalAllocated, "exceeds allocation");
+        require(
+            e.totalDeposited + amount <= e.totalAllocated,
+            "exceeds allocation"
+        );
 
         if (e.token == NATIVE_TOKEN) {
             require(msg.value == amount, "bad msg.value");
@@ -221,25 +238,25 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @notice Optional explicit start; otherwise auto-starts on first approval.
-    function startWork(uint256 id)
-        external
-        whenNotPaused
-        onlyClient(id)
-        inState(id, EscrowState.Funded)
-    {
+    function startWork(
+        uint256 id
+    ) external whenNotPaused onlyClient(id) inState(id, EscrowState.Funded) {
         escrows[id].state = EscrowState.InProgress;
         emit WorkStarted(id);
     }
 
     /// @notice Client approves a milestone; funds become withdrawable by freelancer.
-    function approveMilestone(uint256 id, uint256 index)
-        external
-        whenNotPaused
-        onlyClient(id)
-        nonReentrant
-    {
+    function approveMilestone(
+        uint256 id,
+        uint256 index
+    ) external whenNotPaused onlyClient(id) nonReentrant {
         Escrow storage e = escrows[id];
-        require(e.state != EscrowState.Canceled && e.state != EscrowState.Disputed && e.state != EscrowState.Completed, "not allowed");
+        require(
+            e.state != EscrowState.Canceled &&
+                e.state != EscrowState.Disputed &&
+                e.state != EscrowState.Completed,
+            "not allowed"
+        );
         require(e.totalDeposited == e.totalAllocated, "not fully funded");
         require(index < e.milestones.length, "bad index");
 
@@ -248,7 +265,10 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
 
         // credit funds
         uint256 amount = m.amount;
-        require(e.totalReleased + amount <= e.totalDeposited, "insufficient deposited");
+        require(
+            e.totalReleased + amount <= e.totalDeposited,
+            "insufficient deposited"
+        );
 
         uint256 fee = (amount * feeBps) / 10_000;
         uint256 toFreelancer = amount - fee;
@@ -283,14 +303,12 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     // -----------------------------
 
     /// @notice Client can request cancel only before any approvals.
-    function requestCancel(uint256 id)
-        external
-        whenNotPaused
-        onlyClient(id)
-    {
+    function requestCancel(uint256 id) external whenNotPaused onlyClient(id) {
         Escrow storage e = escrows[id];
         require(
-            e.state == EscrowState.Created || e.state == EscrowState.Funded || e.state == EscrowState.InProgress,
+            e.state == EscrowState.Created ||
+                e.state == EscrowState.Funded ||
+                e.state == EscrowState.InProgress,
             "bad state"
         );
         require(e.totalReleased == 0, "some milestones approved");
@@ -299,7 +317,9 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @notice Freelancer accepts cancel; remaining deposited funds are refunded to client.
-    function acceptCancel(uint256 id)
+    function acceptCancel(
+        uint256 id
+    )
         external
         whenNotPaused
         onlyFreelancer(id)
@@ -318,9 +338,14 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     /// @notice Either party can open a dispute; freezes approvals.
     function openDispute(uint256 id) external whenNotPaused {
         Escrow storage e = escrows[id];
-        require(msg.sender == e.client || msg.sender == e.freelancer, "not participant");
         require(
-            e.state == EscrowState.Funded || e.state == EscrowState.InProgress || e.state == EscrowState.CancelRequested,
+            msg.sender == e.client || msg.sender == e.freelancer,
+            "not participant"
+        );
+        require(
+            e.state == EscrowState.Funded ||
+                e.state == EscrowState.InProgress ||
+                e.state == EscrowState.CancelRequested,
             "bad state"
         );
         e.state = EscrowState.Disputed;
@@ -328,11 +353,11 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     }
 
     /// @notice Owner resolves dispute by splitting remaining deposited funds.
-    function resolveDispute(uint256 id, uint256 clientPayout, uint256 freelancerPayout)
-        external
-        onlyOwner
-        nonReentrant
-    {
+    function resolveDispute(
+        uint256 id,
+        uint256 clientPayout,
+        uint256 freelancerPayout
+    ) external onlyOwner nonReentrant {
         Escrow storage e = escrows[id];
         require(e.state == EscrowState.Disputed, "not disputed");
 
@@ -340,7 +365,8 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         require(clientPayout + freelancerPayout == remaining, "sum mismatch");
 
         if (clientPayout > 0) pending[e.token][e.client] += clientPayout;
-        if (freelancerPayout > 0) pending[e.token][e.freelancer] += freelancerPayout;
+        if (freelancerPayout > 0)
+            pending[e.token][e.freelancer] += freelancerPayout;
 
         // After resolution, mark as Canceled (funds allocated off-chain) or Completed.
         e.state = EscrowState.Canceled;
@@ -375,7 +401,9 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     // Views
     // -----------------------------
 
-    function getEscrowBasic(uint256 id)
+    function getEscrowBasic(
+        uint256 id
+    )
         external
         view
         returns (
@@ -402,10 +430,19 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
         );
     }
 
-    function getMilestone(uint256 id, uint256 index)
+    function getMilestone(
+        uint256 id,
+        uint256 index
+    )
         external
         view
-        returns (uint256 amount, string memory title, uint32 dueDate, bool approved, bool released)
+        returns (
+            uint256 amount,
+            string memory title,
+            uint32 dueDate,
+            bool approved,
+            bool released
+        )
     {
         Escrow storage e = escrows[id];
         require(index < e.milestones.length, "bad index");
@@ -434,19 +471,33 @@ contract MintaroEscrow is Ownable, Pausable, ReentrancyGuard {
     }
 
     function pause() external onlyOwner {
-        _pause();
-        emit Paused(msg.sender);
+        _pause(); // Pausable emits Paused(account)
     }
 
     function unpause() external onlyOwner {
-        _unpause();
-        emit Unpaused(msg.sender);
+        _unpause(); // Pausable emits UnPaused(account)
     }
 
     /// @notice Recover stray ERC20 accidentally sent to this contract (not escrowed balances).
-    function recoverERC20(address token, uint256 amount) external onlyOwner {
-        require(token != address(0), "bad token");
-        IERC20(token).safeTransfer(owner(), amount);
+    function recoverERC20(
+        address token,
+        uint256 amount
+    ) external onlyOwner whenPaused {
+        require(token != NATIVE_TOKEN, "bad token");
+        // prevent sweeping the token used by any active escrow with remaining balance
+        uint256 liabilities;
+        for (uint256 i = 1; i < nextEscrowId; i++) {
+            Escrow storage e = escrows[i];
+            if (e.token == token) {
+                liabilities += (e.totalDeposited - e.totalReleased);
+            }
+        }
+        uint256 bal = IERC20(token).balanceOf(address(this));
+        require(bal > liabilities, "no surplus");
+        IERC20(token).safeTransfer(
+            owner(),
+            amount <= bal - liabilities ? amount : bal - liabilities
+        );
     }
 
     // receive: only accept AVAX when funding an escrow via fundEscrow

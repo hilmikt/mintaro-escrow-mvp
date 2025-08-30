@@ -1,7 +1,6 @@
 # node / env
 node_modules
 .env
-.env.*
 .cache
 dist
 coverage
