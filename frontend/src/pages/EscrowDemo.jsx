@@ -1,4 +1,3 @@
-// frontend/src/pages/EscrowDemo.jsx
 import { useEffect, useMemo, useState } from "react";
 import {
   useAccount,
@@ -18,25 +17,23 @@ function Stepper({ step }) {
     { n: 4, label: "Withdraw" },
   ];
   return (
-    <div className="mb-4 flex items-center gap-3">
+    <div className="mb-6 flex items-center gap-3 justify-center">
       {steps.map((s, i) => {
         const done = step > s.n;
         const active = step === s.n;
         return (
           <div key={s.n} className="flex items-center gap-2">
             <div
-              className={`h-8 w-8 rounded-full flex items-center justify-center text-sm ${
-                done
-                  ? "bg-black text-white"
-                  : active
-                  ? "bg-black/80 text-white"
-                  : "bg-gray-200 text-gray-700"
+              className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold shadow-sm transition ${
+                done ? "bg-red-500 text-white" : active ? "bg-red-400 text-white" : "bg-gray-200 text-gray-700"
               }`}
               title={s.label}
             >
               {done ? "✓" : s.n}
             </div>
-            <span className="text-sm">{s.label}</span>
+            <span className={`text-sm ${active ? "text-red-600 font-medium" : "text-gray-500"}`}>
+              {s.label}
+            </span>
             {i < steps.length - 1 && <div className="h-px w-10 bg-gray-300 mx-2" />}
           </div>
         );
@@ -47,8 +44,8 @@ function Stepper({ step }) {
 
 function Section({ title, children }) {
   return (
-    <section className="mint-card mb-6">
-      <h2 className="text-lg font-semibold mb-3">{title}</h2>
+    <section className="mint-card mb-8">
+      <h2 className="text-lg font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2">{title}</h2>
       {children}
     </section>
   );
@@ -60,15 +57,13 @@ const toLower = (a) => (a ? a.toLowerCase() : a);
 export default function EscrowDemo() {
   const { address } = useAccount();
 
-  // Role tab: "client" | "freelancer"
   const [roleTab, setRoleTab] = useState("client");
 
-  // Local UI state
   const [freelancer, setFreelancer] = useState("");
   const [milestones, setMilestones] = useState([{ amount: "0.05", title: "Design" }]);
 
-  const [escrowId, setEscrowId] = useState(""); // auto-set after Create (from event)
-  const [approveIndex, setApproveIndex] = useState(0); // <-- fixes the runtime error
+  const [escrowId, setEscrowId] = useState("");
+  const [approveIndex, setApproveIndex] = useState(0);
   const escrowIdBig = escrowId ? BigInt(escrowId) : undefined;
 
   const totalAllocated = useMemo(
@@ -77,7 +72,6 @@ export default function EscrowDemo() {
   );
   const totalStr = totalAllocated ? String(totalAllocated) : "";
 
-  // Reads
   const { data: feeBps } = useReadContract({
     address: MINTARO_ADDRESS,
     abi: MINTARO_ABI,
@@ -100,7 +94,6 @@ export default function EscrowDemo() {
     query: { enabled: Boolean(address) },
   });
 
-  // Auto-detect role when an escrow is loaded
   useEffect(() => {
     if (!escrowBasic || !address) return;
     const [clientAddr, freelancerAddr] = [escrowBasic[0], escrowBasic[1]];
@@ -108,14 +101,12 @@ export default function EscrowDemo() {
     else if (toLower(freelancerAddr) === toLower(address)) setRoleTab("freelancer");
   }, [escrowBasic, address]);
 
-  // Writes / tx tracking
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { data: receipt, isSuccess: isMined, isLoading: isMining } =
     useWaitForTransactionReceipt({ hash: txHash });
-  const [pendingAction, setPendingAction] = useState(null); // "create" | "fund" | "approve" | "withdraw"
+  const [pendingAction, setPendingAction] = useState(null);
   const busy = isPending || isMining;
 
-  // On receipt: auto-capture escrowId from EscrowCreated
   useEffect(() => {
     if (!isMined || !receipt) return;
     if (pendingAction === "create") {
@@ -127,24 +118,19 @@ export default function EscrowDemo() {
         });
         const evt = logs?.[0];
         if (evt?.args?.id) setEscrowId(String(evt.args.id));
-      } catch {
-        // ignore; user can type id manually if needed
-      }
+      } catch {}
     }
     setPendingAction(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMined, receipt]);
 
-  // Step calculation (for Stepper)
   const isCreated = Boolean(escrowId);
   const totalDeposited = escrowBasic?.[3] ?? 0n;
   const totalAllocatedBn = escrowBasic?.[4] ?? 0n;
   const isFunded = Boolean(escrowBasic && totalAllocatedBn > 0n && totalDeposited === totalAllocatedBn);
   let step = 1;
   if (isCreated && !isFunded) step = 2;
-  if (isFunded) step = 3; // step 4 (Withdraw) is contextual for freelancer
+  if (isFunded) step = 3;
 
-  /* ---------- Actions ---------- */
   function addMilestone() {
     setMilestones((s) => [...s, { amount: "0.05", title: `M${s.length + 1}` }]);
   }
@@ -221,27 +207,28 @@ export default function EscrowDemo() {
     );
   }
 
-  /* ---------- UI ---------- */
   return (
     <div className="space-y-6">
-      {/* Stepper */}
       <Stepper step={step} />
 
-      {/* Role toggle */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-4 justify-between">
         <div className="inline-flex rounded-2xl border p-1 bg-white shadow-sm">
           <button
             onClick={() => setRoleTab("client")}
-            className={`px-4 py-1.5 rounded-xl text-sm ${
-              roleTab === "client" ? "bg-black text-white" : "hover:bg-gray-100"
+            className={`px-4 py-1.5 rounded-xl text-sm transition ${
+              roleTab === "client"
+                ? "bg-red-500 text-white shadow"
+                : "hover:bg-red-50 text-gray-600"
             }`}
           >
             Client
           </button>
           <button
             onClick={() => setRoleTab("freelancer")}
-            className={`px-4 py-1.5 rounded-xl text-sm ${
-              roleTab === "freelancer" ? "bg-black text-white" : "hover:bg-gray-100"
+            className={`px-4 py-1.5 rounded-xl text-sm transition ${
+              roleTab === "freelancer"
+                ? "bg-red-500 text-white shadow"
+                : "hover:bg-red-50 text-gray-600"
             }`}
           >
             Freelancer
@@ -252,7 +239,6 @@ export default function EscrowDemo() {
         </div>
       </div>
 
-      {/* CLIENT VIEW */}
       {roleTab === "client" && (
         <>
           <Section title="1) Create Escrow (as CLIENT)">
@@ -283,7 +269,7 @@ export default function EscrowDemo() {
                     />
                     <button
                       type="button"
-                      className="rounded-xl border px-3"
+                      className="mint-ghost"
                       onClick={() => removeMilestone(i)}
                     >
                       ✕
@@ -293,7 +279,7 @@ export default function EscrowDemo() {
               </div>
 
               <div className="flex items-center gap-3">
-                <button type="button" className="rounded-xl border px-3 py-2" onClick={addMilestone}>
+                <button type="button" className="mint-ghost" onClick={addMilestone}>
                   + Add Milestone
                 </button>
                 <div className="text-sm text-gray-600">
@@ -305,14 +291,17 @@ export default function EscrowDemo() {
                 className="mint-button mt-2"
                 onClick={onCreateEscrow}
                 disabled={!freelancer || milestones.length === 0 || busy || isCreated}
-                title={!freelancer ? "Enter freelancer address" : ""}
               >
-                {busy && pendingAction === "create" ? "Submitting..." : isCreated ? "Created ✓" : "Create Escrow"}
+                {busy && pendingAction === "create"
+                  ? "Submitting..."
+                  : isCreated
+                  ? "Created ✓"
+                  : "Create Escrow"}
               </button>
 
               {isCreated && (
                 <div className="text-xs text-gray-600">
-                  Escrow ID: <span className="font-mono">{escrowId}</span> (auto-detected)
+                  Escrow ID: <span className="font-mono">{escrowId}</span>
                 </div>
               )}
             </div>
@@ -334,7 +323,11 @@ export default function EscrowDemo() {
                 onClick={onFundEscrow}
                 disabled={!isCreated || !totalStr || busy || isFunded}
               >
-                {busy && pendingAction === "fund" ? "Submitting..." : isFunded ? "Funded ✓" : "Fund (AVAX)"}
+                {busy && pendingAction === "fund"
+                  ? "Submitting..."
+                  : isFunded
+                  ? "Funded ✓"
+                  : "Fund (AVAX)"}
               </button>
             </div>
           </Section>
@@ -364,7 +357,6 @@ export default function EscrowDemo() {
         </>
       )}
 
-      {/* FREELANCER VIEW */}
       {roleTab === "freelancer" && (
         <>
           <Section title="4) Withdraw (as FREELANCER)">
@@ -378,7 +370,7 @@ export default function EscrowDemo() {
                   "Connect wallet"
                 )}
               </div>
-              <div className="text-base font-semibold">{formatEther(pendingNative || 0n)} AVAX</div>
+              <div className="text-base font-semibold text-red-600">{formatEther(pendingNative || 0n)} AVAX</div>
             </div>
             <button
               className="mint-button mt-3"
@@ -402,7 +394,7 @@ export default function EscrowDemo() {
                 onChange={(e) => setEscrowId(e.target.value)}
               />
               {escrowBasic && (
-                <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
+                <pre className="text-xs bg-red-50 p-3 rounded overflow-x-auto border border-red-100">
                   {JSON.stringify(
                     {
                       client: escrowBasic[0],

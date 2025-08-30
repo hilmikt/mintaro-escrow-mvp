@@ -4,9 +4,7 @@ import { useContractRead } from "wagmi";
 import { MINTARO_ADDRESS, MINTARO_ABI } from "./contracts";
 import "@rainbow-me/rainbowkit/styles.css";
 
-import EscrowDemo from "@/pages/EscrowDemo";
-// If you still have EscrowFlows, render only ONE page to avoid duplicates
-// import EscrowFlows from "@/features/escrow/Flows";
+import EscrowDemo from "@/pages/EscrowDemo"; // render ONE main page
 
 export default function App() {
   const { data: feeBps } = useContractRead({
@@ -17,7 +15,7 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen">
       {/* Top bar */}
       <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
@@ -27,14 +25,18 @@ export default function App() {
       </header>
 
       {/* Main content */}
-      <main className="mx-auto max-w-4xl px-4 py-6">
-        <p className="mb-4 text-sm text-gray-600">
+      <main className="mx-auto max-w-4xl px-4 py-6 space-y-2">
+        <p className="text-sm text-gray-600">
           Platform Fee: {feeBps !== undefined ? `${feeBps} bps` : "Loading..."}
         </p>
 
         <EscrowDemo />
-        {/* Or: <EscrowFlows /> (but not both) */}
       </main>
+
+      {/* Footer (optional) */}
+      <footer className="mt-8 mb-6 text-center text-xs text-gray-500">
+        Avalanche Fuji • Mintaro MVP
+      </footer>
     </div>
   );
 }

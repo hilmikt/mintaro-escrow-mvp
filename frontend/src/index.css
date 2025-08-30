@@ -2,30 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Make root fill the screen and ensure background is white */
-html, body, #root {
-  height: 100%;
-}
+/* Make app fill viewport and use gradient base */
+html, body, #root { height: 100%; }
 
 body {
-  @apply bg-white text-gray-900 overflow-x-hidden;
+  @apply antialiased overflow-x-hidden;
+  background: linear-gradient(135deg, #fafafa 0%, #fff5f5 100%);
+  color: #1f2937; /* slate-800 */
+  font-family: system-ui, sans-serif;
 }
 
-/* Pretty inputs & buttons without writing classes everywhere */
+/* Reusable UI components */
 @layer components {
-  .mint-input {
-    @apply w-full rounded-xl border border-gray-300 px-3 py-2 outline-none
-           focus:ring-2 focus:ring-black/20 focus:border-gray-400 bg-white;
-  }
-  .mint-button {
-    @apply inline-flex items-center justify-center rounded-2xl px-4 py-2
-           bg-black text-white disabled:opacity-50 disabled:cursor-not-allowed
-           hover:bg-black/90 transition;
-  }
   .mint-card {
-    @apply rounded-2xl border border-gray-200 bg-white p-5 shadow-sm;
+    @apply rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition;
   }
   .mint-label {
     @apply text-sm font-medium text-gray-700;
+  }
+  .mint-input {
+    @apply w-full rounded-xl border border-gray-300 bg-white px-3 py-2 outline-none
+           focus:ring-2 focus:ring-red-300 focus:border-red-400;
+  }
+  .mint-button {
+    @apply inline-flex items-center justify-center rounded-2xl px-4 py-2
+           bg-red-500 text-white font-medium shadow-sm
+           hover:bg-red-600 hover:shadow-md
+           disabled:opacity-50 disabled:cursor-not-allowed transition;
+  }
+  .mint-ghost {
+    @apply inline-flex items-center justify-center rounded-xl border border-gray-300 px-3 py-2
+           text-gray-700 bg-white hover:bg-gray-50 hover:shadow-sm transition;
+  }
+  .mint-title {
+    @apply text-xl font-bold text-gray-800;
   }
 }
