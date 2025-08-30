@@ -1,3 +1,4 @@
+// src/pages/EscrowDemo.jsx
 import { useEffect, useMemo, useState } from "react";
 import {
   useAccount,
@@ -7,6 +8,20 @@ import {
 } from "wagmi";
 import { parseEther, formatEther, parseEventLogs } from "viem";
 import { MINTARO_ADDRESS, MINTARO_ABI, ZERO_ADDRESS } from "@/contracts";
+import { toast } from "sonner"; // NEW
+
+/* ---------- tiny helpers ---------- */
+const toLower = (a) => (a ? a.toLowerCase() : a);
+const isEthAddress = (s) => /^0x[a-fA-F0-9]{40}$/.test(s || "");
+const ESCROW_STATE = [
+  "Created",
+  "Funded",
+  "InProgress",
+  "Completed",
+  "CancelRequested",
+  "Canceled",
+  "Disputed",
+];
 
 /* ---------- UI bits ---------- */
 function Stepper({ step }) {
@@ -25,13 +40,21 @@ function Stepper({ step }) {
           <div key={s.n} className="flex items-center gap-2">
             <div
               className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold shadow-sm transition ${
-                done ? "bg-red-500 text-white" : active ? "bg-red-400 text-white" : "bg-gray-200 text-gray-700"
+                done
+                  ? "bg-red-500 text-white"
+                  : active
+                  ? "bg-red-400 text-white"
+                  : "bg-gray-200 text-gray-700"
               }`}
               title={s.label}
             >
               {done ? "✓" : s.n}
             </div>
-            <span className={`text-sm ${active ? "text-red-600 font-medium" : "text-gray-500"}`}>
+            <span
+              className={`text-sm ${
+                active ? "text-red-600 font-medium" : "text-gray-500"
+              }`}
+            >
               {s.label}
             </span>
             {i < steps.length - 1 && <div className="h-px w-10 bg-gray-300 mx-2" />}
@@ -42,36 +65,56 @@ function Stepper({ step }) {
   );
 }
 
-function Section({ title, children }) {
+function Section({ title, children, extra }) {
   return (
     <section className="mint-card mb-8">
-      <h2 className="text-lg font-bold text-gray-800 mb-3 border-b border-gray-100 pb-2">{title}</h2>
+      <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+        <h2 className="text-lg font-bold text-gray-800">{title}</h2>
+        {extra}
+      </div>
       {children}
     </section>
   );
 }
 
-const toLower = (a) => (a ? a.toLowerCase() : a);
+function Pill({ label, tone }) {
+  const style =
+    tone === "green"
+      ? "bg-green-100 text-green-700"
+      : tone === "blue"
+      ? "bg-blue-100 text-blue-700"
+      : tone === "yellow"
+      ? "bg-yellow-100 text-yellow-700"
+      : tone === "red"
+      ? "bg-red-100 text-red-700"
+      : "bg-gray-100 text-gray-700";
+  return <span className={`text-xs px-2 py-0.5 rounded-full ${style}`}>{label}</span>;
+}
 
 /* ---------- Main ---------- */
 export default function EscrowDemo() {
   const { address } = useAccount();
 
+  // role toggle
   const [roleTab, setRoleTab] = useState("client");
 
+  // create state
   const [freelancer, setFreelancer] = useState("");
   const [milestones, setMilestones] = useState([{ amount: "0.05", title: "Design" }]);
 
+  // shared state
   const [escrowId, setEscrowId] = useState("");
   const [approveIndex, setApproveIndex] = useState(0);
   const escrowIdBig = escrowId ? BigInt(escrowId) : undefined;
 
+  // derived totals
   const totalAllocated = useMemo(
     () => milestones.reduce((sum, m) => sum + (parseFloat(m.amount || "0") || 0), 0),
     [milestones]
   );
   const totalStr = totalAllocated ? String(totalAllocated) : "";
 
+  // reads
   const { data: feeBps } = useReadContract({
     address: MINTARO_ADDRESS,
     abi: MINTARO_ABI,
@@ -94,6 +137,7 @@ export default function EscrowDemo() {
     query: { enabled: Boolean(address) },
   });
 
+  // auto role detection
   useEffect(() => {
     if (!escrowBasic || !address) return;
     const [clientAddr, freelancerAddr] = [escrowBasic[0], escrowBasic[1]];
@@ -101,12 +145,14 @@ export default function EscrowDemo() {
     else if (toLower(freelancerAddr) === toLower(address)) setRoleTab("freelancer");
   }, [escrowBasic, address]);
 
+  // writers
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { data: receipt, isSuccess: isMined, isLoading: isMining } =
     useWaitForTransactionReceipt({ hash: txHash });
   const [pendingAction, setPendingAction] = useState(null);
   const busy = isPending || isMining;
 
+  // harvest created escrowId from event
   useEffect(() => {
     if (!isMined || !receipt) return;
     if (pendingAction === "create") {
@@ -121,8 +167,9 @@ export default function EscrowDemo() {
       } catch {}
     }
     setPendingAction(null);
-  }, [isMined, receipt]);
+  }, [isMined, receipt, pendingAction, setEscrowId, MINTARO_ABI]);
 
+  // step logic
   const isCreated = Boolean(escrowId);
   const totalDeposited = escrowBasic?.[3] ?? 0n;
   const totalAllocatedBn = escrowBasic?.[4] ?? 0n;
@@ -131,6 +178,92 @@ export default function EscrowDemo() {
   if (isCreated && !isFunded) step = 2;
   if (isFunded) step = 3;
 
+  // inline validation
+  const badFreelancer = freelancer && !isEthAddress(freelancer);
+  const badAmounts =
+    milestones.length === 0 ||
+    milestones.some((m) => !m.amount || isNaN(Number(m.amount)) || Number(m.amount) <= 0);
+
+  // handlers with toasts
+  function onCreateEscrow() {
+    if (badFreelancer || badAmounts) {
+      toast.error("Fix the highlighted fields before creating.");
+      return;
+    }
+    const amounts = milestones.map((m) => parseEther(m.amount || "0"));
+    const titles = milestones.map((m) => m.title || "");
+    const dueDates = milestones.map(() => 0);
+
+    const t = toast.loading("Creating escrow…");
+    setPendingAction("create");
+    writeContract(
+      {
+        address: MINTARO_ADDRESS,
+        abi: MINTARO_ABI,
+        functionName: "createEscrow",
+        args: [freelancer, ZERO_ADDRESS, amounts, titles, dueDates],
+      },
+      {
+        onError: (e) => toast.error(e?.shortMessage || e.message || "Create failed", { id: t }),
+        onSuccess: (hash) => toast.success("Escrow tx submitted", { id: t, description: hash }),
+      }
+    );
+  }
+
+  function onFundEscrow() {
+    if (!escrowIdBig) return toast.error("Enter a valid escrow ID.");
+    const t = toast.loading("Funding escrow…");
+    setPendingAction("fund");
+    writeContract(
+      {
+        address: MINTARO_ADDRESS,
+        abi: MINTARO_ABI,
+        functionName: "fundEscrow",
+        args: [escrowIdBig, parseEther(totalStr)],
+        value: parseEther(totalStr),
+      },
+      {
+        onError: (e) => toast.error(e?.shortMessage || e.message || "Funding failed", { id: t }),
+        onSuccess: (hash) => toast.success("Funding tx submitted", { id: t, description: hash }),
+      }
+    );
+  }
+
+  function onApproveMilestone() {
+    if (!escrowIdBig) return toast.error("Enter a valid escrow ID.");
+    const t = toast.loading("Approving milestone…");
+    setPendingAction("approve");
+    writeContract(
+      {
+        address: MINTARO_ADDRESS,
+        abi: MINTARO_ABI,
+        functionName: "approveMilestone",
+        args: [escrowIdBig, 0n + BigInt(approveIndex)],
+      },
+      {
+        onError: (e) => toast.error(e?.shortMessage || e.message || "Approval failed", { id: t }),
+        onSuccess: (hash) => toast.success("Approval tx submitted", { id: t, description: hash }),
+      }
+    );
+  }
+
+  function onWithdrawNative() {
+    const t = toast.loading("Withdrawing AVAX…");
+    setPendingAction("withdraw");
+    writeContract(
+      {
+        address: MINTARO_ADDRESS,
+        abi: MINTARO_ABI,
+        functionName: "withdrawNative",
+      },
+      {
+        onError: (e) => toast.error(e?.shortMessage || e.message || "Withdraw failed", { id: t }),
+        onSuccess: (hash) => toast.success("Withdraw tx submitted", { id: t, description: hash }),
+      }
+    );
+  }
+
+  // UI helpers
   function addMilestone() {
     setMilestones((s) => [...s, { amount: "0.05", title: `M${s.length + 1}` }]);
   }
@@ -149,76 +282,30 @@ export default function EscrowDemo() {
     });
   }
 
-  function onCreateEscrow() {
-    if (!freelancer || milestones.length === 0) return;
-    const amounts = milestones.map((m) => parseEther(m.amount || "0"));
-    const titles = milestones.map((m) => m.title || "");
-    const dueDates = milestones.map(() => 0);
-    setPendingAction("create");
-    writeContract(
-      {
-        address: MINTARO_ADDRESS,
-        abi: MINTARO_ABI,
-        functionName: "createEscrow",
-        args: [freelancer, ZERO_ADDRESS, amounts, titles, dueDates],
-      },
-      { onError: (e) => alert(e?.shortMessage || e.message) }
-    );
-  }
-
-  function onFundEscrow() {
-    if (!escrowIdBig || !totalStr) return;
-    setPendingAction("fund");
-    writeContract(
-      {
-        address: MINTARO_ADDRESS,
-        abi: MINTARO_ABI,
-        functionName: "fundEscrow",
-        args: [escrowIdBig, parseEther(totalStr)],
-        value: parseEther(totalStr),
-      },
-      { onError: (e) => alert(e?.shortMessage || e.message) }
-    );
-  }
-
-  function onApproveMilestone() {
-    if (!escrowIdBig) return;
-    setPendingAction("approve");
-    writeContract(
-      {
-        address: MINTARO_ADDRESS,
-        abi: MINTARO_ABI,
-        functionName: "approveMilestone",
-        args: [escrowIdBig, 0n + BigInt(approveIndex)],
-      },
-      { onError: (e) => alert(e?.shortMessage || e.message) }
-    );
-  }
-
-  function onWithdrawNative() {
-    setPendingAction("withdraw");
-    writeContract(
-      {
-        address: MINTARO_ADDRESS,
-        abi: MINTARO_ABI,
-        functionName: "withdrawNative",
-      },
-      { onError: (e) => alert(e?.shortMessage || e.message) }
-    );
+  // status pill (if escrow loaded)
+  let statePill = null;
+  if (escrowBasic) {
+    const idx = Number(escrowBasic[6]);
+    const label = ESCROW_STATE[idx] ?? "Unknown";
+    const tone =
+      label === "Completed" ? "green" :
+      label === "InProgress" ? "blue" :
+      label === "Funded" ? "yellow" :
+      (label === "Canceled" || label === "Disputed") ? "red" : "gray";
+    statePill = <Pill label={label} tone={tone} />;
   }
 
   return (
     <div className="space-y-6">
       <Stepper step={step} />
 
+      {/* role toggle */}
       <div className="flex items-center gap-2 mb-4 justify-between">
         <div className="inline-flex rounded-2xl border p-1 bg-white shadow-sm">
           <button
             onClick={() => setRoleTab("client")}
             className={`px-4 py-1.5 rounded-xl text-sm transition ${
-              roleTab === "client"
-                ? "bg-red-500 text-white shadow"
-                : "hover:bg-red-50 text-gray-600"
+              roleTab === "client" ? "bg-red-500 text-white shadow" : "hover:bg-red-50 text-gray-600"
             }`}
           >
             Client
@@ -226,9 +313,7 @@ export default function EscrowDemo() {
           <button
             onClick={() => setRoleTab("freelancer")}
             className={`px-4 py-1.5 rounded-xl text-sm transition ${
-              roleTab === "freelancer"
-                ? "bg-red-500 text-white shadow"
-                : "hover:bg-red-50 text-gray-600"
+              roleTab === "freelancer" ? "bg-red-500 text-white shadow" : "hover:bg-red-50 text-gray-600"
             }`}
           >
             Freelancer
@@ -241,45 +326,47 @@ export default function EscrowDemo() {
 
       {roleTab === "client" && (
         <>
-          <Section title="1) Create Escrow (as CLIENT)">
+          <Section title="1) Create Escrow (as CLIENT)" extra={statePill}>
             <div className="grid gap-3">
               <label className="mint-label">Freelancer Address</label>
               <input
-                className="mint-input"
+                className={`mint-input ${freelancer && !isEthAddress(freelancer) ? "border-red-400 ring-1 ring-red-200" : ""}`}
                 placeholder="0x..."
                 value={freelancer}
                 onChange={(e) => setFreelancer(e.target.value)}
               />
+              {freelancer && !isEthAddress(freelancer) && (
+                <p className="text-xs text-red-600">Enter a valid 0x address.</p>
+              )}
 
               <div className="mint-label mt-2">Milestones (AVAX amounts)</div>
               <div className="space-y-2">
-                {milestones.map((m, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input
-                      className="mint-input w-32"
-                      placeholder="0.05"
-                      value={m.amount}
-                      onChange={(e) => updateMilestone(i, "amount", e.target.value)}
-                    />
-                    <input
-                      className="mint-input flex-1"
-                      placeholder={`Milestone ${i + 1}`}
-                      value={m.title}
-                      onChange={(e) => updateMilestone(i, "title", e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="mint-ghost"
-                      onClick={() => removeMilestone(i)}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                {milestones.map((m, i) => {
+                  const bad = !m.amount || isNaN(Number(m.amount)) || Number(m.amount) <= 0;
+                  return (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        className={`mint-input w-32 ${bad ? "border-red-400 ring-1 ring-red-200" : ""}`}
+                        placeholder="0.05"
+                        value={m.amount}
+                        onChange={(e) => updateMilestone(i, "amount", e.target.value)}
+                      />
+                      <input
+                        className="mint-input flex-1"
+                        placeholder={`Milestone ${i + 1}`}
+                        value={m.title}
+                        onChange={(e) => updateMilestone(i, "title", e.target.value)}
+                      />
+                      <button type="button" className="rounded-xl border px-3" onClick={() => removeMilestone(i)}>
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex items-center gap-3">
-                <button type="button" className="mint-ghost" onClick={addMilestone}>
+                <button type="button" className="rounded-xl border px-3 py-2" onClick={addMilestone}>
                   + Add Milestone
                 </button>
                 <div className="text-sm text-gray-600">
@@ -290,10 +377,17 @@ export default function EscrowDemo() {
               <button
                 className="mint-button mt-2"
                 onClick={onCreateEscrow}
-                disabled={!freelancer || milestones.length === 0 || busy || isCreated}
+                disabled={
+                  busy ||
+                  !freelancer ||
+                  !isEthAddress(freelancer) ||
+                  milestones.length === 0 ||
+                  milestones.some((m) => !m.amount || Number(m.amount) <= 0) ||
+                  isCreated
+                }
               >
                 {busy && pendingAction === "create"
-                  ? "Submitting..."
+                  ? "Submitting…"
                   : isCreated
                   ? "Created ✓"
                   : "Create Escrow"}
@@ -307,7 +401,7 @@ export default function EscrowDemo() {
             </div>
           </Section>
 
-          <Section title="2) Fund Escrow (as CLIENT)">
+          <Section title="2) Fund Escrow (as CLIENT)" extra={statePill}>
             <div className="grid gap-3">
               <label className="mint-label">Escrow ID</label>
               <input
@@ -323,16 +417,12 @@ export default function EscrowDemo() {
                 onClick={onFundEscrow}
                 disabled={!isCreated || !totalStr || busy || isFunded}
               >
-                {busy && pendingAction === "fund"
-                  ? "Submitting..."
-                  : isFunded
-                  ? "Funded ✓"
-                  : "Fund (AVAX)"}
+                {busy && pendingAction === "fund" ? "Submitting…" : isFunded ? "Funded ✓" : "Fund (AVAX)"}
               </button>
             </div>
           </Section>
 
-          <Section title="3) Approve Milestone (as CLIENT)">
+          <Section title="3) Approve Milestone (as CLIENT)" extra={statePill}>
             <div className="grid gap-3">
               <div className="text-sm text-gray-600">
                 {isFunded ? "Escrow is fully funded — ready to approve." : "Approve enabled after full funding."}
@@ -350,7 +440,7 @@ export default function EscrowDemo() {
                 onClick={onApproveMilestone}
                 disabled={!isFunded || busy}
               >
-                {busy && pendingAction === "approve" ? "Submitting..." : "Approve Milestone"}
+                {busy && pendingAction === "approve" ? "Submitting…" : "Approve Milestone"}
               </button>
             </div>
           </Section>
@@ -359,32 +449,28 @@ export default function EscrowDemo() {
 
       {roleTab === "freelancer" && (
         <>
-          <Section title="4) Withdraw (as FREELANCER)">
+          <Section title="4) Withdraw (as FREELANCER)" extra={statePill}>
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-700">
-                {address ? (
-                  <>
-                    Address: <span className="font-mono">{address}</span>
-                  </>
-                ) : (
-                  "Connect wallet"
-                )}
+                {address ? <>Address: <span className="font-mono">{address}</span></> : "Connect wallet"}
               </div>
-              <div className="text-base font-semibold text-red-600">{formatEther(pendingNative || 0n)} AVAX</div>
+              <div className="text-base font-semibold text-red-600">
+                {formatEther(pendingNative || 0n)} AVAX
+              </div>
             </div>
             <button
               className="mint-button mt-3"
               onClick={onWithdrawNative}
               disabled={busy || (pendingNative || 0n) === 0n}
             >
-              {busy && pendingAction === "withdraw" ? "Submitting..." : "Withdraw AVAX"}
+              {busy && pendingAction === "withdraw" ? "Submitting…" : "Withdraw AVAX"}
             </button>
             <div className="text-xs text-gray-500 mt-2">
               Tip: Use a second wallet as the Freelancer when testing.
             </div>
           </Section>
 
-          <Section title="Lookup Escrow (optional)">
+          <Section title="Lookup Escrow (optional)" extra={statePill}>
             <div className="grid gap-3">
               <label className="mint-label">Escrow ID</label>
               <input

@@ -1,8 +1,10 @@
+// src/App.jsx
 import React from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useContractRead } from "wagmi";
 import { MINTARO_ADDRESS, MINTARO_ABI } from "./contracts";
 import "@rainbow-me/rainbowkit/styles.css";
+import { Toaster } from "sonner"; // NEW
 
 import EscrowDemo from "@/pages/EscrowDemo"; // render ONE main page
 
@@ -15,7 +17,10 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gradient-to-b from-rose-50 to-white text-gray-900">
+      {/* Toasts */}
+      <Toaster position="top-center" richColors />  {/* NEW */}
+
       {/* Top bar */}
       <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
