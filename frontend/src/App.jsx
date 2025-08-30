@@ -5,7 +5,8 @@ import { MINTARO_ADDRESS, MINTARO_ABI } from "./contracts";
 import "@rainbow-me/rainbowkit/styles.css";
 
 import EscrowDemo from "@/pages/EscrowDemo";
-// import EscrowFlows from "@/features/escrow/Flows"; // <- remove for now
+// If you still have EscrowFlows, render only ONE page to avoid duplicates
+// import EscrowFlows from "@/features/escrow/Flows";
 
 export default function App() {
   const { data: feeBps } = useContractRead({
@@ -17,15 +18,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="p-4 border-b flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Mintaro — Milestone Escrow (Fuji)</h1>
-        <ConnectButton />
-      </div>
+      {/* Top bar */}
+      <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
+          <h1 className="text-xl md:text-2xl font-bold">Mintaro — Milestone Escrow (Fuji)</h1>
+          <ConnectButton />
+        </div>
+      </header>
 
-      <div className="p-4">
-        <p className="mb-4">Platform Fee: {feeBps !== undefined ? `${feeBps} bps` : "Loading..."}</p>
+      {/* Main content */}
+      <main className="mx-auto max-w-4xl px-4 py-6">
+        <p className="mb-4 text-sm text-gray-600">
+          Platform Fee: {feeBps !== undefined ? `${feeBps} bps` : "Loading..."}
+        </p>
+
         <EscrowDemo />
-      </div>
+        {/* Or: <EscrowFlows /> (but not both) */}
+      </main>
     </div>
   );
 }
