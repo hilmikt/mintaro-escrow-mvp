@@ -1,3 +1,4 @@
+// frontend/src/pages/EscrowDemo.jsx
 import { useEffect, useMemo, useState } from "react";
 import {
   useAccount,
@@ -5,12 +6,44 @@ import {
   useWriteContract,
   useWaitForTransactionReceipt,
 } from "wagmi";
-import { parseEther, formatEther } from "viem";
-import {
-  MINTARO_ADDRESS,
-  MINTARO_ABI,
-  ZERO_ADDRESS, // ensure this exists in src/contracts/index.(ts|js)
-} from "@/contracts";
+import { parseEther, formatEther, parseEventLogs } from "viem";
+import { MINTARO_ADDRESS, MINTARO_ABI, ZERO_ADDRESS } from "@/contracts";
+
+/* ---------- UI bits ---------- */
+function Stepper({ step }) {
+  const steps = [
+    { n: 1, label: "Create" },
+    { n: 2, label: "Fund" },
+    { n: 3, label: "Approve" },
+    { n: 4, label: "Withdraw" },
+  ];
+  return (
+    <div className="mb-4 flex items-center gap-3">
+      {steps.map((s, i) => {
+        const done = step > s.n;
+        const active = step === s.n;
+        return (
+          <div key={s.n} className="flex items-center gap-2">
+            <div
+              className={`h-8 w-8 rounded-full flex items-center justify-center text-sm ${
+                done
+                  ? "bg-black text-white"
+                  : active
+                  ? "bg-black/80 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
+              title={s.label}
+            >
+              {done ? "✓" : s.n}
+            </div>
+            <span className="text-sm">{s.label}</span>
+            {i < steps.length - 1 && <div className="h-px w-10 bg-gray-300 mx-2" />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function Section({ title, children }) {
   return (
@@ -23,38 +56,34 @@ function Section({ title, children }) {
 
 const toLower = (a) => (a ? a.toLowerCase() : a);
 
+/* ---------- Main ---------- */
 export default function EscrowDemo() {
   const { address } = useAccount();
 
-  // ---------- Role tab ----------
-  // "client" | "freelancer"
+  // Role tab: "client" | "freelancer"
   const [roleTab, setRoleTab] = useState("client");
 
-  // ---------- Local UI state ----------
+  // Local UI state
   const [freelancer, setFreelancer] = useState("");
   const [milestones, setMilestones] = useState([{ amount: "0.05", title: "Design" }]);
 
-  const [escrowId, setEscrowId] = useState(""); // user-entered escrow id
+  const [escrowId, setEscrowId] = useState(""); // auto-set after Create (from event)
+  const [approveIndex, setApproveIndex] = useState(0); // <-- fixes the runtime error
   const escrowIdBig = escrowId ? BigInt(escrowId) : undefined;
 
-  const [fundTotal, setFundTotal] = useState("");
-  const [approveIndex, setApproveIndex] = useState(0);
-
-  // ---------- Derived totals ----------
   const totalAllocated = useMemo(
     () => milestones.reduce((sum, m) => sum + (parseFloat(m.amount || "0") || 0), 0),
     [milestones]
   );
-  useEffect(() => setFundTotal(totalAllocated ? String(totalAllocated) : ""), [totalAllocated]);
+  const totalStr = totalAllocated ? String(totalAllocated) : "";
 
-  // ---------- Reads ----------
+  // Reads
   const { data: feeBps } = useReadContract({
     address: MINTARO_ADDRESS,
     abi: MINTARO_ABI,
     functionName: "feeBps",
   });
 
-  // Escrow info (for role auto-detect + read panel)
   const { data: escrowBasic } = useReadContract({
     address: MINTARO_ADDRESS,
     abi: MINTARO_ABI,
@@ -63,7 +92,6 @@ export default function EscrowDemo() {
     query: { enabled: escrowIdBig !== undefined },
   });
 
-  // Freelancer pending native balance
   const { data: pendingNative = 0n } = useReadContract({
     address: MINTARO_ADDRESS,
     abi: MINTARO_ABI,
@@ -72,7 +100,7 @@ export default function EscrowDemo() {
     query: { enabled: Boolean(address) },
   });
 
-  // ---------- Auto-detect role from escrowId ----------
+  // Auto-detect role when an escrow is loaded
   useEffect(() => {
     if (!escrowBasic || !address) return;
     const [clientAddr, freelancerAddr] = [escrowBasic[0], escrowBasic[1]];
@@ -80,32 +108,67 @@ export default function EscrowDemo() {
     else if (toLower(freelancerAddr) === toLower(address)) setRoleTab("freelancer");
   }, [escrowBasic, address]);
 
-  // ---------- Writes / tx state ----------
+  // Writes / tx tracking
   const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isMining, isSuccess: isMined } = useWaitForTransactionReceipt({ hash: txHash });
+  const { data: receipt, isSuccess: isMined, isLoading: isMining } =
+    useWaitForTransactionReceipt({ hash: txHash });
+  const [pendingAction, setPendingAction] = useState(null); // "create" | "fund" | "approve" | "withdraw"
   const busy = isPending || isMining;
 
-  // ---------- UI helpers ----------
+  // On receipt: auto-capture escrowId from EscrowCreated
+  useEffect(() => {
+    if (!isMined || !receipt) return;
+    if (pendingAction === "create") {
+      try {
+        const logs = parseEventLogs({
+          abi: MINTARO_ABI,
+          logs: receipt.logs,
+          eventName: "EscrowCreated",
+        });
+        const evt = logs?.[0];
+        if (evt?.args?.id) setEscrowId(String(evt.args.id));
+      } catch {
+        // ignore; user can type id manually if needed
+      }
+    }
+    setPendingAction(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMined, receipt]);
+
+  // Step calculation (for Stepper)
+  const isCreated = Boolean(escrowId);
+  const totalDeposited = escrowBasic?.[3] ?? 0n;
+  const totalAllocatedBn = escrowBasic?.[4] ?? 0n;
+  const isFunded = Boolean(escrowBasic && totalAllocatedBn > 0n && totalDeposited === totalAllocatedBn);
+  let step = 1;
+  if (isCreated && !isFunded) step = 2;
+  if (isFunded) step = 3; // step 4 (Withdraw) is contextual for freelancer
+
+  /* ---------- Actions ---------- */
   function addMilestone() {
-    setMilestones([...milestones, { amount: "0.05", title: `M${milestones.length + 1}` }]);
+    setMilestones((s) => [...s, { amount: "0.05", title: `M${s.length + 1}` }]);
   }
   function updateMilestone(i, key, val) {
-    const next = milestones.slice();
-    next[i] = { ...next[i], [key]: val };
-    setMilestones(next);
+    setMilestones((s) => {
+      const next = s.slice();
+      next[i] = { ...next[i], [key]: val };
+      return next;
+    });
   }
   function removeMilestone(i) {
-    const next = milestones.slice();
-    next.splice(i, 1);
-    setMilestones(next);
+    setMilestones((s) => {
+      const next = s.slice();
+      next.splice(i, 1);
+      return next;
+    });
   }
 
-  // ---------- Actions ----------
   function onCreateEscrow() {
     if (!freelancer || milestones.length === 0) return;
     const amounts = milestones.map((m) => parseEther(m.amount || "0"));
     const titles = milestones.map((m) => m.title || "");
     const dueDates = milestones.map(() => 0);
+    setPendingAction("create");
     writeContract(
       {
         address: MINTARO_ADDRESS,
@@ -118,14 +181,15 @@ export default function EscrowDemo() {
   }
 
   function onFundEscrow() {
-    if (!escrowIdBig || !fundTotal) return;
+    if (!escrowIdBig || !totalStr) return;
+    setPendingAction("fund");
     writeContract(
       {
         address: MINTARO_ADDRESS,
         abi: MINTARO_ABI,
         functionName: "fundEscrow",
-        args: [escrowIdBig, parseEther(fundTotal)],
-        value: parseEther(fundTotal),
+        args: [escrowIdBig, parseEther(totalStr)],
+        value: parseEther(totalStr),
       },
       { onError: (e) => alert(e?.shortMessage || e.message) }
     );
@@ -133,34 +197,38 @@ export default function EscrowDemo() {
 
   function onApproveMilestone() {
     if (!escrowIdBig) return;
+    setPendingAction("approve");
     writeContract(
       {
         address: MINTARO_ADDRESS,
         abi: MINTARO_ABI,
         functionName: "approveMilestone",
-        args: [escrowIdBig, BigInt(approveIndex)],
+        args: [escrowIdBig, 0n + BigInt(approveIndex)],
       },
       { onError: (e) => alert(e?.shortMessage || e.message) }
     );
   }
 
   function onWithdrawNative() {
+    setPendingAction("withdraw");
     writeContract(
       {
         address: MINTARO_ADDRESS,
         abi: MINTARO_ABI,
         functionName: "withdrawNative",
-        args: [],
       },
       { onError: (e) => alert(e?.shortMessage || e.message) }
     );
   }
 
-  // ---------- UI ----------
+  /* ---------- UI ---------- */
   return (
     <div className="space-y-6">
+      {/* Stepper */}
+      <Stepper step={step} />
+
       {/* Role toggle */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-2">
         <div className="inline-flex rounded-2xl border p-1 bg-white shadow-sm">
           <button
             onClick={() => setRoleTab("client")}
@@ -180,8 +248,7 @@ export default function EscrowDemo() {
           </button>
         </div>
         <div className="text-xs text-gray-500">
-          Connected: <span className="font-mono">{address ?? "—"}</span> • Fee:{" "}
-          {String(feeBps ?? "—")} bps
+          Connected: <span className="font-mono">{address ?? "—"}</span> • Fee: {String(feeBps ?? "—")} bps
         </div>
       </div>
 
@@ -226,11 +293,7 @@ export default function EscrowDemo() {
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  className="rounded-xl border px-3 py-2"
-                  onClick={addMilestone}
-                >
+                <button type="button" className="rounded-xl border px-3 py-2" onClick={addMilestone}>
                   + Add Milestone
                 </button>
                 <div className="text-sm text-gray-600">
@@ -241,12 +304,16 @@ export default function EscrowDemo() {
               <button
                 className="mint-button mt-2"
                 onClick={onCreateEscrow}
-                disabled={!freelancer || milestones.length === 0 || busy}
+                disabled={!freelancer || milestones.length === 0 || busy || isCreated}
+                title={!freelancer ? "Enter freelancer address" : ""}
               >
-                {busy ? "Submitting..." : "Create Escrow"}
+                {busy && pendingAction === "create" ? "Submitting..." : isCreated ? "Created ✓" : "Create Escrow"}
               </button>
-              {isMined && (
-                <div className="text-green-600 text-sm">Txn confirmed ✅</div>
+
+              {isCreated && (
+                <div className="text-xs text-gray-600">
+                  Escrow ID: <span className="font-mono">{escrowId}</span> (auto-detected)
+                </div>
               )}
             </div>
           </Section>
@@ -260,22 +327,14 @@ export default function EscrowDemo() {
                 value={escrowId}
                 onChange={(e) => setEscrowId(e.target.value)}
               />
-              <label className="mint-label">
-                Total (must equal sum of milestones)
-              </label>
-              <input
-                className="mint-input w-40"
-                placeholder="0.20"
-                value={fundTotal}
-                onChange={(e) => setFundTotal(e.target.value)}
-              />
-
+              <label className="mint-label">Total (must equal sum of milestones)</label>
+              <input className="mint-input w-40" value={totalStr} readOnly />
               <button
                 className="mint-button mt-2"
                 onClick={onFundEscrow}
-                disabled={!escrowId || !fundTotal || busy}
+                disabled={!isCreated || !totalStr || busy || isFunded}
               >
-                {busy ? "Submitting..." : "Fund (AVAX)"}
+                {busy && pendingAction === "fund" ? "Submitting..." : isFunded ? "Funded ✓" : "Fund (AVAX)"}
               </button>
             </div>
           </Section>
@@ -283,10 +342,7 @@ export default function EscrowDemo() {
           <Section title="3) Approve Milestone (as CLIENT)">
             <div className="grid gap-3">
               <div className="text-sm text-gray-600">
-                Milestones in this escrow:{" "}
-                <b>
-                  {escrowBasic ? Number(escrowBasic[7]) : "—"}
-                </b>
+                {isFunded ? "Escrow is fully funded — ready to approve." : "Approve enabled after full funding."}
               </div>
               <label className="mint-label">Milestone Index</label>
               <input
@@ -294,16 +350,14 @@ export default function EscrowDemo() {
                 type="number"
                 min={0}
                 value={approveIndex}
-                onChange={(e) =>
-                  setApproveIndex(parseInt(e.target.value || "0", 10))
-                }
+                onChange={(e) => setApproveIndex(parseInt(e.target.value || "0", 10))}
               />
               <button
                 className="mint-button mt-2"
                 onClick={onApproveMilestone}
-                disabled={!escrowId || busy}
+                disabled={!isFunded || busy}
               >
-                {busy ? "Submitting..." : "Approve Milestone"}
+                {busy && pendingAction === "approve" ? "Submitting..." : "Approve Milestone"}
               </button>
             </div>
           </Section>
@@ -313,7 +367,7 @@ export default function EscrowDemo() {
       {/* FREELANCER VIEW */}
       {roleTab === "freelancer" && (
         <>
-          <Section title="Your Withdrawable Balance (AVAX)">
+          <Section title="4) Withdraw (as FREELANCER)">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-700">
                 {address ? (
@@ -324,16 +378,14 @@ export default function EscrowDemo() {
                   "Connect wallet"
                 )}
               </div>
-              <div className="text-base font-semibold">
-                {formatEther(pendingNative || 0n)} AVAX
-              </div>
+              <div className="text-base font-semibold">{formatEther(pendingNative || 0n)} AVAX</div>
             </div>
             <button
               className="mint-button mt-3"
               onClick={onWithdrawNative}
               disabled={busy || (pendingNative || 0n) === 0n}
             >
-              {busy ? "Submitting..." : "Withdraw AVAX"}
+              {busy && pendingAction === "withdraw" ? "Submitting..." : "Withdraw AVAX"}
             </button>
             <div className="text-xs text-gray-500 mt-2">
               Tip: Use a second wallet as the Freelancer when testing.
@@ -351,16 +403,20 @@ export default function EscrowDemo() {
               />
               {escrowBasic && (
                 <pre className="text-xs bg-gray-50 p-3 rounded overflow-x-auto">
-{JSON.stringify({
-  client: escrowBasic[0],
-  freelancer: escrowBasic[1],
-  token: escrowBasic[2],
-  totalDeposited: formatEther(escrowBasic[3] || 0n),
-  totalAllocated: formatEther(escrowBasic[4] || 0n),
-  totalReleased: formatEther(escrowBasic[5] || 0n),
-  state: Number(escrowBasic[6]),
-  milestonesCount: Number(escrowBasic[7]),
-}, null, 2)}
+                  {JSON.stringify(
+                    {
+                      client: escrowBasic[0],
+                      freelancer: escrowBasic[1],
+                      token: escrowBasic[2],
+                      totalDeposited: formatEther(escrowBasic[3] || 0n),
+                      totalAllocated: formatEther(escrowBasic[4] || 0n),
+                      totalReleased: formatEther(escrowBasic[5] || 0n),
+                      state: Number(escrowBasic[6]),
+                      milestonesCount: Number(escrowBasic[7]),
+                    },
+                    null,
+                    2
+                  )}
                 </pre>
               )}
             </div>
