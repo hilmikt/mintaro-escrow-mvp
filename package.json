@@ -27,7 +27,10 @@
   "homepage": "https://github.com/hilmikt/mintaro-escrow-mvp#readme",
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
-    "qr": "^0.5.1"
+    "@rainbow-me/rainbowkit": "^2.2.8",
+    "qr": "^0.5.1",
+    "viem": "^2.36.0",
+    "wagmi": "^2.16.9"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
