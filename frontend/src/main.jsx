@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const config = getDefaultConfig({
   appName: "Mintaro Escrow MVP",
-  projectId: "mintaro-mvp", // any string is fine here
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "mintaro-mvp",
   chains: [avalancheFuji],
   transports: {
     [avalancheFuji.id]: http("https://api.avax-test.network/ext/bc/C/rpc"), // explicit Fuji RPC
