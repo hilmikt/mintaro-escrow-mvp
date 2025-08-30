@@ -5,6 +5,7 @@ import {
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
+  usePublicClient,        // NEW
 } from "wagmi";
 import { parseEther, formatEther, parseEventLogs } from "viem";
 import { MINTARO_ADDRESS, MINTARO_ABI, ZERO_ADDRESS } from "@/contracts";
@@ -94,6 +95,7 @@ function Pill({ label, tone }) {
 /* ---------- Main ---------- */
 export default function EscrowDemo() {
   const { address } = useAccount();
+  const publicClient = usePublicClient(); // NEW
 
   // role toggle
   const [roleTab, setRoleTab] = useState("client");
@@ -167,7 +169,7 @@ export default function EscrowDemo() {
       } catch {}
     }
     setPendingAction(null);
-  }, [isMined, receipt, pendingAction, setEscrowId, MINTARO_ABI]);
+  }, [isMined, receipt, pendingAction]);
 
   // step logic
   const isCreated = Boolean(escrowId);
@@ -295,6 +297,74 @@ export default function EscrowDemo() {
     statePill = <Pill label={label} tone={tone} />;
   }
 
+  /* =========================
+     NEW: Milestones table (E)
+     ========================= */
+  const [milestoneRows, setMilestoneRows] = useState([]);
+  useEffect(() => {
+    let ignore = false;
+    async function load() {
+      if (!escrowIdBig || !escrowBasic) {
+        setMilestoneRows([]);
+        return;
+      }
+      const count = Number(escrowBasic[7] || 0n);
+      const rows = [];
+      for (let i = 0; i < count; i++) {
+        const m = await publicClient.readContract({
+          address: MINTARO_ADDRESS,
+          abi: MINTARO_ABI,
+          functionName: "getMilestone",
+          args: [escrowIdBig, BigInt(i)],
+        });
+        rows.push({ index: i, amount: m[0], title: m[1], approved: m[3], released: m[4] });
+      }
+      if (!ignore) setMilestoneRows(rows);
+    }
+    load();
+    return () => { ignore = true; };
+  }, [escrowIdBig, escrowBasic, publicClient]);
+
+  /* ======================
+     NEW: My Escrows (F)
+     ====================== */
+  const [myEscrows, setMyEscrows] = useState([]);
+  async function loadMyEscrows() {
+    if (!address) return;
+    const latest = await publicClient.getBlockNumber();
+    const from = latest > 150000n ? latest - 150000n : 0n; // recent range for speed
+
+    const logs = await publicClient.getLogs({
+      address: MINTARO_ADDRESS,
+      event: {
+        type: "event",
+        name: "EscrowCreated",
+        inputs: [
+          { type: "uint256", name: "id", indexed: true },
+          { type: "address", name: "client", indexed: true },
+          { type: "address", name: "freelancer", indexed: true },
+          { type: "address", name: "token" },
+          { type: "uint256", name: "totalAmount" },
+        ],
+      },
+      fromBlock: from,
+      toBlock: "latest",
+    });
+
+    const me = address.toLowerCase();
+    const items = logs
+      .map((l) => ({
+        id: l.args.id?.toString?.() ?? "",
+        client: String(l.args.client).toLowerCase(),
+        freelancer: String(l.args.freelancer).toLowerCase(),
+        totalAmount: l.args.totalAmount,
+      }))
+      .filter((x) => x.client === me || x.freelancer === me)
+      .sort((a, b) => Number(a.id) - Number(b.id));
+
+    setMyEscrows(items);
+  }
+
   return (
     <div className="space-y-6">
       <Stepper step={step} />
@@ -326,7 +396,7 @@ export default function EscrowDemo() {
 
       {roleTab === "client" && (
         <>
-          <Section title="1) Create Escrow (as CLIENT)" extra={statePill}>
+          <Section title="1) Create Escrow " extra={statePill}>
             <div className="grid gap-3">
               <label className="mint-label">Freelancer Address</label>
               <input
@@ -401,7 +471,7 @@ export default function EscrowDemo() {
             </div>
           </Section>
 
-          <Section title="2) Fund Escrow (as CLIENT)" extra={statePill}>
+          <Section title="2) Fund Escrow" extra={statePill}>
             <div className="grid gap-3">
               <label className="mint-label">Escrow ID</label>
               <input
@@ -422,7 +492,7 @@ export default function EscrowDemo() {
             </div>
           </Section>
 
-          <Section title="3) Approve Milestone (as CLIENT)" extra={statePill}>
+          <Section title="3) Approve Milestone" extra={statePill}>
             <div className="grid gap-3">
               <div className="text-sm text-gray-600">
                 {isFunded ? "Escrow is fully funded — ready to approve." : "Approve enabled after full funding."}
@@ -449,7 +519,7 @@ export default function EscrowDemo() {
 
       {roleTab === "freelancer" && (
         <>
-          <Section title="4) Withdraw (as FREELANCER)" extra={statePill}>
+          <Section title="4) Withdraw " extra={statePill}>
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-700">
                 {address ? <>Address: <span className="font-mono">{address}</span></> : "Connect wallet"}
@@ -501,6 +571,89 @@ export default function EscrowDemo() {
           </Section>
         </>
       )}
+
+      {/* NEW: Milestones table (E) — shown whenever an escrow is loaded */}
+      {escrowBasic && (
+        <Section title="Milestones (current escrow)">
+          {milestoneRows.length === 0 ? (
+            <div className="text-sm text-gray-500">No milestones yet.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-gray-600">
+                    <th className="py-2">#</th>
+                    <th className="py-2">Amount (AVAX)</th>
+                    <th className="py-2">Title</th>
+                    <th className="py-2">Approved</th>
+                    <th className="py-2">Released</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {milestoneRows.map((m) => (
+                    <tr key={m.index} className="border-t">
+                      <td className="py-2">{m.index}</td>
+                      <td className="py-2">{formatEther(m.amount)}</td>
+                      <td className="py-2">{m.title || "-"}</td>
+                      <td className="py-2">{m.approved ? "Yes" : "No"}</td>
+                      <td className="py-2">{m.released ? "Yes" : "No"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* NEW: My Escrows (F) — quick finder by recent events */}
+      <Section
+        title="My Escrows"
+        extra={
+          <button className="mint-button" onClick={loadMyEscrows} disabled={!address}>
+            Scan Recent
+          </button>
+        }
+      >
+        {!address ? (
+          <div className="text-sm text-gray-500">Connect a wallet to find your escrows.</div>
+        ) : myEscrows.length === 0 ? (
+          <div className="text-sm text-gray-500">
+            No escrows found in the recent block range. Click <b>Scan Recent</b> to search.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-600">
+                  <th className="py-2">ID</th>
+                  <th className="py-2">Role</th>
+                  <th className="py-2">Total</th>
+                  <th className="py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myEscrows.map((e) => {
+                  const me = address?.toLowerCase();
+                  const role = e.client === me ? "Client" : "Freelancer";
+                  return (
+                    <tr key={e.id} className="border-t">
+                      <td className="py-2">{e.id}</td>
+                      <td className="py-2">{role}</td>
+                      <td className="py-2">{formatEther(e.totalAmount || 0n)} AVAX</td>
+                      <td className="py-2">
+                        <button className="rounded-xl border px-3 py-1" onClick={() => setEscrowId(e.id)}>
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
