@@ -66,3 +66,18 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+@import "tailwindcss";
+
+@layer base {
+  html, body, #root { height: 100%; }
+}
+
+@layer components {
+  .card { @apply rounded-2xl p-6 shadow-md border border-gray-200; }
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
