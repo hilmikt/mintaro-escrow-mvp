@@ -24,7 +24,7 @@ export default function App() {
       {/* Top bar */}
       <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-4xl px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl md:text-2xl font-bold">Mintaro — Milestone Escrow (Fuji)</h1>
+          <h1 className="text-xl md:text-2xl font-bold">Mintaro - Milestone Escrow (Built on Fuji)</h1>
           <ConnectButton />
         </div>
       </header>
