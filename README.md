@@ -1,6 +1,6 @@
-# Mintaro — Milestone Escrow MVP
+# Mintaro - Milestone Escrow MVP
 
-Mintaro is a Web3 freelance platform prototype built around ~milestone-based escrow payments~.  
+Mintaro is a Web3 freelance platform prototype built around ***milestone-based escrow payments***.  
 It ensures freelancers are rewarded fairly for completed work while giving clients protection if projects stall or are abandoned.  
 This MVP is deployed on Avalanche Fuji Testnet.
 
@@ -8,22 +8,22 @@ This MVP is deployed on Avalanche Fuji Testnet.
 
 ## ✨ Key Features
 
-- ~Milestone-based escrow~ — fund and release project step-by-step  
-- ~Pull payment model~ — freelancers withdraw earned funds themselves (safer than push payouts)  
-- ~Dispute mechanism~ — cancellation requests, freelancer confirmations, and owner resolution  
-- ~Platform fee system~ — configurable by owner (10 bps = 0.1%)  
-- Multi-token support — works with AVAX + ERC20 tokens  
-- Admin controls — pause/unpause, update treasury, adjust fee rates  
+- ***Milestone-based escrow*** — fund and release project step-by-step  
+- ***Pull payment model*** — freelancers withdraw earned funds themselves (safer than push payouts)  
+- ***Dispute mechanism*** — cancellation requests, freelancer confirmations, and owner resolution  
+- ***Platform fee system*** — configurable by owner (10 bps = 0.1%)  
+- ***Multi-token support*** — works with AVAX + ERC20 tokens  
+- ***Admin controls*** — pause/unpause, update treasury, adjust fee rates  
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Smart Contracts**: Solidity, Hardhat, OpenZeppelin  
+- **Smart Contracts**: Solidity, Hardhat
 - **Frontend**: React, Vite, TailwindCSS  
-- **Web3 Integration**: Wagmi, RainbowKit, Viem  
+- **Web3 Integration**: Wagmi, RainbowKit
 - **Deployment**: Avalanche Fuji Testnet  
-- **Infra Roadmap**: IPFS/Arweave for storage, Cross-chain bridges, Oracles  
+- **Infra Roadmap**: On-chain reputation & scoring, DAO-based dispute governance, Layer-2 scaling for cheaper escrow, WalletConnect integration improvements
 
 ---
 
@@ -62,7 +62,7 @@ Deploy to Fuji testnet:
 
     npx hardhat run script/deploy.js --network fuji
 
-> Configure `.env` with ~FUJI_RPC_URL~, ~PRIVATE_KEY~, ~FEE_TREASURY~.
+> Configure `.env` with ***FUJI_RPC_URL***, ***PRIVATE_KEY***, ***FEE_TREASURY***.
 
 ---
 
@@ -89,7 +89,7 @@ Required env variables in ~frontend/.env~:
 
 ## 🔗 Deployed Contract (Fuji Testnet)
 
-- Address: ~0x52EF27e7E2800f7E186d15D1Cd122F7a020338DF~  
+- Address: ***0x52EF27e7E2800f7E186d15D1Cd122F7a020338DF***  
 - Explorer: https://testnet.snowtrace.io/address/0x52EF27e7E2800f7E186d15D1Cd122F7a020338DF  
 
 ---
@@ -106,13 +106,13 @@ Required env variables in ~frontend/.env~:
 
 ## 🧩 Roadmap
 
-- ~Reputation system~ — combined on-chain scoring + off-chain verifiable proof  
-- ~DAO governance~ — community-driven fee & treasury settings  
-- ~Cross-chain escrow~ — Avalanche ↔ Ethereum ↔ L2 support  
-- ~AI integration~ — automatic milestone verification, fraud detection  
-- ~Advanced dispute resolution~ — third-party arbitrators + DAO voting  
-- ~Fiat on/off ramps~ — smoother Web2 → Web3 user experience  
-- ~Mobile-first dApp~ — freelancers/clients manage work on-the-go  
+- ***Reputation system*** — combined on-chain scoring + off-chain verifiable proof  
+- ***DAO governance*** — community-driven fee & treasury settings  
+- ***Cross-chain escrow*** — Avalanche ↔ Ethereum ↔ L2 support  
+- ***AI integration*** — automatic milestone verification, fraud detection  
+- ***Advanced dispute resolution*** — third-party arbitrators + DAO voting  
+- ***Fiat on/off ramps*** — smoother Web2 → Web3 user experience  
+- ***Mobile-first dApp*** — freelancers/clients manage work on-the-go  
 
 ---
 
