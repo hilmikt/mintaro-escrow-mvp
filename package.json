@@ -11,8 +11,8 @@
     "test": "hardhat test",
     "node": "hardhat node",
     "compile": "hardhat compile",
-    "deploy:local": "node scripts/deploy.js",
-    "deploy:fuji": "hardhat run scripts/deploy.js --network fuji"
+    "deploy:local": "node script/deploy.js",
+    "deploy:fuji": "hardhat run script/deploy.js --network fuji"
   },
   "repository": {
     "type": "git",
@@ -20,7 +20,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/hilmikt/mintaro-escrow-mvp/issues"
   },

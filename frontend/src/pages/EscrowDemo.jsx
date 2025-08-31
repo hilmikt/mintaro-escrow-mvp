@@ -166,6 +166,7 @@ export default function EscrowDemo() {
         });
         const evt = logs?.[0];
         if (evt?.args?.id) setEscrowId(String(evt.args.id));
+      // eslint-disable-next-line no-empty
       } catch {}
     }
     setPendingAction(null);
